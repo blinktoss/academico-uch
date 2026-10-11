@@ -1,0 +1,697 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE beans PUBLIC "-//SPRING//DTD BEAN//EN" "http://www.springframework.org/dtd/spring-beans.dtd">
+
+<!--
+  - Application context definition for MyFaces, Hibernate and Spring Integration application.
+-->
+<beans>
+
+    <!-- New service layer config (XSD-namespace style, tx:annotation-driven, component-scan) -
+         kept in its own file since this one's DTD-based <beans> root can't host it. -->
+    <import resource="applicationContext-services.xml"/>
+
+    <!-- ========================= RESOURCE DEFINITIONS ========================= -->
+    <bean id="helper" class="net.uch.common.SystemHelper"/>
+    <bean id="printer" class="net.uch.common.Print">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+
+    <!-- Configurer that replaces ${...} placeholders with values from a properties file -->
+    <!-- (in this case, JDBC-related settings for the dataSource definition below) -->
+    <bean id="propertyConfigurer" class="org.springframework.context.support.PropertySourcesPlaceholderConfigurer">
+        <property name="location" value="/WEB-INF/hibernate.properties"/>
+    </bean>
+
+    <!-- HikariCP connection pool (Track-2 suite standard, #62). Spring owns this DataSource and
+         injects it into the SessionFactory and the Jasper 'printer' bean; Hibernate does not use
+         its own connection provider. Connection settings reuse the same ${jdbc.*} placeholders as
+         before, so the env-var path (JDBC_URL / JDBC_USER / JDBC_PASSWORD) is unchanged. -->
+    <bean id="dataSource" class="com.zaxxer.hikari.HikariDataSource" destroy-method="close">
+        <property name="driverClassName" value="${jdbc.driverClassName}"/>
+        <property name="jdbcUrl" value="${jdbc.url}"/>
+        <property name="username" value="${jdbc.username}"/>
+        <property name="password" value="${jdbc.password}"/>
+
+        <property name="poolName" value="uch-academico-pool"/>
+        <!-- Fixed pool (minimumIdle == maximumPoolSize) avoids churn; sized for ~50 concurrent
+             administrative users and a safe share of MySQL 5.6's connection budget across the UCH
+             suite. Down from c3p0's 10/150, which was never fully used and oversubscribed the
+             shared database. -->
+        <property name="maximumPoolSize" value="25"/>
+        <property name="minimumIdle" value="25"/>
+
+        <!-- HikariCP does not pool statements, which removes c3p0's asynchronous statement-close
+             "APPARENT DEADLOCK" class entirely. Prepared-statement caching is delegated to the
+             MySQL driver (HikariCP's documented recommendation), preserving the intent of c3p0's
+             old per-connection statement cache without its failure mode. -->
+        <property name="dataSourceProperties">
+            <props>
+                <prop key="cachePrepStmts">true</prop>
+                <prop key="prepStmtCacheSize">250</prop>
+                <prop key="prepStmtCacheSqlLimit">2048</prop>
+            </props>
+        </property>
+
+        <!-- Connection validity is checked via JDBC4 Connection.isValid() on checkout (no test
+             query needed for Connector/J 8), so c3p0's idleConnectionTestPeriod is gone. A leaked
+             connection (a missing try/finally) is NOT force-reclaimed mid-transaction; Hikari
+             retires it at maxLifetime (default 30 min, safely under MySQL wait_timeout). To hunt a
+             suspected leak, set leakDetectionThreshold (ms) to log the offending stack trace. -->
+    </bean>
+
+    <!-- JNDI DataSource for J2EE environments -->
+    <!--
+    <bean id="dataSource" class="org.springframework.jndi.JndiObjectFactoryBean">
+            <property name="jndiName"><value>java:comp/env/jdbc/roseindiaDB_local</value></property>
+    </bean>
+    -->
+    <!-- Hibernate SessionFactory -->
+
+    <bean id="auditInterceptor" class="net.uch.common.audit.AuditInterceptor"/>
+
+    <bean id="sessionFactory" class="org.springframework.orm.hibernate5.LocalSessionFactoryBean">
+        <property name="hibernateProperties" ref="hibernateProperties"/>
+        <property name="dataSource" ref="dataSource"/>
+        <property name="entityInterceptor" ref="auditInterceptor"/>
+        <property name="mappingResources">
+            <list>
+                <value>/net/uch/hbm/AcActa.hbm.xml</value>
+                <value>/net/uch/hbm/AcActaDetalle.hbm.xml</value>
+                <value>/net/uch/hbm/AcAlumno.hbm.xml</value>
+                <value>/net/uch/hbm/AcAlumnoDato.hbm.xml</value>
+                <value>/net/uch/hbm/AcAmpliaciones.hbm.xml</value>
+                <value>/net/uch/hbm/AcAula.hbm.xml</value>
+                <value>/net/uch/hbm/AcCurso.hbm.xml</value>
+                <value>/net/uch/hbm/AcCursoAperturado.hbm.xml</value>
+                <value>/net/uch/hbm/AcDisponibilidad.hbm.xml</value>
+                <value>/net/uch/hbm/AcDocente.hbm.xml</value>
+                <value>/net/uch/hbm/AcEquivalencia.hbm.xml</value>
+                <value>/net/uch/hbm/AcEspecialidad.hbm.xml</value>
+                <value>/net/uch/hbm/AcFacultad.hbm.xml</value>
+                <value>/net/uch/hbm/AcHorario.hbm.xml</value>
+                <value>/net/uch/hbm/AcImportacionNotas.hbm.xml</value>
+                <value>/net/uch/hbm/AcLocal.hbm.xml</value>
+                <value>/net/uch/hbm/AcMatricula.hbm.xml</value>
+                <value>/net/uch/hbm/AcMatriculaCurso.hbm.xml</value>
+                <value>/net/uch/hbm/AcNota.hbm.xml</value>
+                <value>/net/uch/hbm/AcNotasTemporales.hbm.xml</value>
+                <value>/net/uch/hbm/AcPabellon.hbm.xml</value>
+                <value>/net/uch/hbm/AcPlancurricular.hbm.xml</value>
+                <value>/net/uch/hbm/AcPlanCurso.hbm.xml</value>
+                <value>/net/uch/hbm/AcPreRequisitos.hbm.xml</value>
+                <value>/net/uch/hbm/AcSeccion.hbm.xml</value>
+                <value>/net/uch/hbm/AcSemestre.hbm.xml</value>
+                <!--Mantenimiento de Actividad-->
+                <value>/net/uch/hbm/AcActividadAlcance.hbm.xml</value>
+                <value>/net/uch/hbm/AcCalendario.hbm.xml</value>
+                <value>/net/uch/hbm/AcCalendarioActividades.hbm.xml</value>
+
+                <value>/net/uch/hbm/AcSesionAsistencia.hbm.xml</value>
+                <value>/net/uch/hbm/AcSesionEfectivaAsisDet.hbm.xml</value>
+                <value>/net/uch/hbm/AcSesionEfectivaAsisDoc.hbm.xml</value>
+                <value>/net/uch/hbm/AcSesionEfectivaAsistencia.hbm.xml</value>
+
+                <value>/net/uch/hbm/AcSisEvaDetalle.hbm.xml</value>
+                <value>/net/uch/hbm/AcSisEvaluacion.hbm.xml</value>
+                <value>/net/uch/hbm/AcSisEvaPersonalizado.hbm.xml</value>
+                <value>/net/uch/hbm/AcTurno.hbm.xml</value>
+                <value>/net/uch/hbm/AcTurnoDetalle.hbm.xml</value>
+                <value>/net/uch/hbm/AdAlumnoTarifa.hbm.xml</value>
+                <value>/net/uch/hbm/AdClientes.hbm.xml</value>
+                <value>/net/uch/hbm/AdComprobantePago.hbm.xml</value>
+                <value>/net/uch/hbm/AdConceptoPago.hbm.xml</value>
+                <value>/net/uch/hbm/AdPago.hbm.xml</value>
+                <value>/net/uch/hbm/AdProrroga.hbm.xml</value>
+                <value>/net/uch/hbm/AdSaldo.hbm.xml</value>
+                <value>/net/uch/hbm/TbCatalogo.hbm.xml</value>
+                <value>/net/uch/hbm/TbDistrito.hbm.xml</value>
+                <value>/net/uch/hbm/TbUsuario.hbm.xml</value>
+                <value>/net/uch/hbm/TbRoles.hbm.xml</value>
+                <value>/net/uch/hbm/AdEstructuraPagos.hbm.xml</value>
+                <value>/net/uch/hbm/AdEstructuraPagosDetalle.hbm.xml</value>
+                <value>/net/uch/hbm/AcContenidoTematico.hbm.xml</value>
+                <value>/net/uch/hbm/AcContenidoDetalle.hbm.xml</value>
+                <value>/net/uch/hbm/AcAlumnoDocumento.hbm.xml</value>
+                <value>/net/uch/hbm/TbAsistencia.hbm.xml</value>
+
+                <value>/net/uch/hbm/TbMenu.hbm.xml</value>
+                <value>/net/uch/hbm/TbMenuRol.hbm.xml</value>
+
+                <value>/net/uch/hbm/ClAlumno.hbm.xml</value>
+                <value>/net/uch/hbm/ClAlumnoTarifa.hbm.xml</value>
+                <value>/net/uch/hbm/ClArea.hbm.xml</value>
+                <value>/net/uch/hbm/ClCurso.hbm.xml</value>
+                <value>/net/uch/hbm/ClEstructuraPagos.hbm.xml</value>
+                <value>/net/uch/hbm/ClEstructuraPagosDetalle.hbm.xml</value>
+                <value>/net/uch/hbm/ClHoraria.hbm.xml</value>
+                <value>/net/uch/hbm/ClMatricula.hbm.xml</value>
+                <value>/net/uch/hbm/ClMatriculaTaller.hbm.xml</value>
+                <value>/net/uch/hbm/ClModulo.hbm.xml</value>
+                <value>/net/uch/hbm/ClNota.hbm.xml</value>
+                <value>/net/uch/hbm/ClPlancurricular.hbm.xml</value>
+                <value>/net/uch/hbm/ClSeccion.hbm.xml</value>
+                <value>/net/uch/hbm/ClTaller.hbm.xml</value>
+                <value>/net/uch/hbm/ClTallerAperturado.hbm.xml</value>
+                <value>/net/uch/hbm/ClSisEvaDetalle.hbm.xml</value>
+                <value>/net/uch/hbm/ClSisEvaluacion.hbm.xml</value>
+                <value>/net/uch/hbm/ClSisEvaPersonalizado.hbm.xml</value>
+
+                <value>/net/uch/hbm/AcArea.hbm.xml</value>
+                <value>/net/uch/hbm/AcHorarioArea.hbm.xml</value>
+                <value>/net/uch/hbm/TbBanco.hbm.xml</value>
+                <value>/net/uch/hbm/TbBancoEntrada.hbm.xml</value>
+                <value>/net/uch/hbm/TbPagoBanco.hbm.xml</value>
+
+                <!-- Procedimientos almacenados -->
+                <value>/net/uch/hbm/FConceptosBanco.hbm.xml</value>
+                <value>/net/uch/hbm/FConvalidacionCursos.hbm.xml</value>
+                <value>/net/uch/hbm/FDataBanco.hbm.xml</value>
+                <value>/net/uch/hbm/FGenerarCodigo.hbm.xml</value>
+            </list>
+        </property>
+    </bean>
+
+    <bean id="hibernateProperties" class="org.springframework.beans.factory.config.PropertiesFactoryBean">
+        <property name="properties">
+            <props>
+                <prop key="hibernate.dialect">${hibernate.dialect}</prop>
+                <prop key="hibernate.jdbc.batch_size">${hibernate.jdbc.batch_size}</prop>
+                <prop key="hibernate.show_sql">${hibernate.show_sql}</prop>
+                <prop key="hibernate.cache.use_second_level_cache">false</prop>
+                <prop key="hibernate.bytecode.use_reflection_optimizer">true</prop>
+                <prop key="hibernate.jdbc.lob.non_contextual_creation">false</prop>
+            </props>
+        </property>
+    </bean>
+
+    <!-- Transaction manager for a single Hibernate SessionFactory (alternative to JTA) -->
+    <bean id="transactionManager" class="org.springframework.orm.hibernate5.HibernateTransactionManager">
+        <property name="sessionFactory" ref="sessionFactory"/>
+    </bean>
+
+    <!-- Abstract templates that collapse the per-DAO boilerplate below.
+         baseHibernateDao supplies the shared sessionFactory to every DAO impl;
+         baseTransactionProxy supplies the transaction manager and the common
+         propagation rules to every declarative-tx proxy. Children add only what
+         differs (the impl class / the target). Bean IDs are unchanged so the
+         ServiceFinder lookups ("springHibernateDao<Entity>") keep resolving. -->
+    <bean id="baseHibernateDao" abstract="true">
+        <property name="sessionFactory" ref="sessionFactory"/>
+    </bean>
+
+    <bean id="baseTransactionProxy" abstract="true"
+          class="org.springframework.transaction.interceptor.TransactionProxyFactoryBean">
+        <property name="transactionManager" ref="transactionManager"/>
+        <property name="transactionAttributes">
+            <props>
+                <prop key="get*">PROPAGATION_REQUIRED,readOnly</prop>
+                <prop key="find*">PROPAGATION_REQUIRED,readOnly</prop>
+                <prop key="load*">PROPAGATION_REQUIRED,readOnly</prop>
+                <prop key="store*">PROPAGATION_REQUIRED</prop>
+                <prop key="add*">PROPAGATION_REQUIRED</prop>
+                <prop key="*">PROPAGATION_REQUIRED</prop>
+            </props>
+        </property>
+    </bean>
+
+
+    <!-- ========================= BUSINESS OBJECT DEFINITIONS ========================= -->
+
+    <!--
+    Data access object: Hibernate implementation.
+    -->
+
+    <bean id="hibernateSpringDaoTargetPlanCurricular" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSPlanCurricularDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetPlanCurricularCurso" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSPlanCurricularCursoDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetFacultad" parent="baseHibernateDao"
+          class="net.uch.configuracion.dao.impl.HSFacultadDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetEspecialidad" parent="baseHibernateDao"
+          class="net.uch.configuracion.dao.impl.HSEspecialidadDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetAula" parent="baseHibernateDao"
+          class="net.uch.configuracion.dao.impl.HSAulaDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetLocal" parent="baseHibernateDao"
+          class="net.uch.configuracion.dao.impl.HSLocalDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetCurso" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSCursoDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetCatalogo" parent="baseHibernateDao"
+          class="net.uch.configuracion.dao.impl.HSCatalogoDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetDocente" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSDocenteDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetUbigeo" parent="baseHibernateDao"
+          class="net.uch.configuracion.dao.impl.HSUbigeoDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetSemestre" parent="baseHibernateDao"
+          class="net.uch.configuracion.dao.impl.HSSemestreDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetTurno" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSTurnoDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetTurnoDetalle" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSTurnoDetalleDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetPabellon" parent="baseHibernateDao"
+          class="net.uch.configuracion.dao.impl.HSPabellonDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetMenu" parent="baseHibernateDao"
+          class="net.uch.configuracion.dao.impl.HSMenuDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetConceptoPago" parent="baseHibernateDao"
+          class="net.uch.administrativa.dao.impl.HSConceptoPagoDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetAlumno" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSAlumnoDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetAlumnoDato" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSAlumnoDatoDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetSistemaEvaluacion" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSSistemaEvaluacionDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetPreRequisitos" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSPreRequisitosDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetCursoAperturado" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSAperturaCursosDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetSeccion" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSSeccionDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetEdicionEstructura" parent="baseHibernateDao"
+          class="net.uch.administrativa.dao.impl.HSEdicionEstructPagoDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetEstructuraPagos" parent="baseHibernateDao"
+          class="net.uch.administrativa.dao.impl.HSEstructuraPagoDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetHorario" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSHorarioDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetHorarioArea" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSHorarioAreaDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetUsuario" parent="baseHibernateDao"
+          class="net.uch.configuracion.dao.impl.HSUsuarioDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetPago" parent="baseHibernateDao"
+          class="net.uch.administrativa.dao.impl.HSPagoDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetSaldo" parent="baseHibernateDao"
+          class="net.uch.administrativa.dao.impl.HSSaldoDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetAlumnoTarifa" parent="baseHibernateDao"
+          class="net.uch.administrativa.dao.impl.HSAlumnoTarifaDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetProrroga" parent="baseHibernateDao"
+          class="net.uch.administrativa.dao.impl.HSProrrogaDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetContenidoTematico" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSContenidoTematicoDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetCliente" parent="baseHibernateDao"
+          class="net.uch.administrativa.dao.impl.HSClienteDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetMatricula" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSMatriculaDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetNota" parent="baseHibernateDao" class="net.uch.academica.dao.impl.HSNotaDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetAsistencia" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSAsistenciaDAOImpl"/>
+    <bean id="hibernateSpringDaoTargetActa" parent="baseHibernateDao" class="net.uch.academica.dao.impl.HSActaDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetActividad" parent="baseHibernateDao"
+          class="net.uch.configuracion.dao.impl.HSActividadDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetCLArea" parent="baseHibernateDao"
+          class="net.uch.cursolibre.dao.impl.HSAreaDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetCLAlumno" parent="baseHibernateDao"
+          class="net.uch.cursolibre.dao.impl.HSAlumnoCLDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetCLAlumnoTarifa" parent="baseHibernateDao"
+          class="net.uch.cursolibre.dao.impl.HSAlumnoTarifaCLDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetCLMatricula" parent="baseHibernateDao"
+          class="net.uch.cursolibre.dao.impl.HSMatriculaCLDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetCLModulo" parent="baseHibernateDao"
+          class="net.uch.cursolibre.dao.impl.HSModuloDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetCLCurso" parent="baseHibernateDao"
+          class="net.uch.cursolibre.dao.impl.HSCursoCLDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetCLPlanCurricular" parent="baseHibernateDao"
+          class="net.uch.cursolibre.dao.impl.HSPlanCurricularDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetCLTaller" parent="baseHibernateDao"
+          class="net.uch.cursolibre.dao.impl.HSTallerDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetCLTallerAperturado" parent="baseHibernateDao"
+          class="net.uch.cursolibre.dao.impl.HSTallerAperturadoDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetCLHorario" parent="baseHibernateDao"
+          class="net.uch.cursolibre.dao.impl.HSHorarioDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetCLEstructuraPago" parent="baseHibernateDao"
+          class="net.uch.cursolibre.dao.impl.HSEstructuraPagoDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetCLNotas" parent="baseHibernateDao"
+          class="net.uch.cursolibre.dao.impl.HSNotasCLDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetCLSeccion" parent="baseHibernateDao"
+          class="net.uch.cursolibre.dao.impl.HSSeccionCLDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetCLSistemaEvaluacion" parent="baseHibernateDao"
+          class="net.uch.cursolibre.dao.impl.HSSistemaEvaluacionCLDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetAsistenciaDocente" parent="baseHibernateDao"
+          class="net.uch.asistencia.dao.impl.HSAsistenciaDocenteDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetNotasTemporales" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSNotasTemporalesDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetImportacionNotas" parent="baseHibernateDao"
+          class="net.uch.academica.dao.impl.HSImportacionNotasDAOImpl"/>
+
+    <bean id="hibernateSpringDaoTargetBanco" parent="baseHibernateDao" class="net.uch.banco.dao.impl.HSBancoDAOImpl"/>
+
+    <!--
+                - Transactional proxy for Application's central data access object.
+                -
+                - Defines specific transaction attributes with "readOnly" markers,
+                - which is an optimization that is particularly valuable with Hibernate
+                - (to suppress unnecessary flush attempts for read-only operations).
+                -
+                - Note that in a real-life app with multiple transaction proxies,
+                - you will probably want to use parent and child bean definitions
+                - as described in the manual, to reduce duplication.
+    -->
+
+    <bean id="springHibernateDaoPlanCurricular" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetPlanCurricular"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoPlanCurricularCurso" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetPlanCurricularCurso"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoFacultad" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetFacultad"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoEspecialidad" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetEspecialidad"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoAula" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetAula"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoLocal" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetLocal"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoCurso" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCurso"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoCatalogo" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCatalogo"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoDocente" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetDocente"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoHorario" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetHorario"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoHorarioArea" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetHorarioArea"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoUbigeo" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetUbigeo"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoSemestre" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetSemestre"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoTurno" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetTurno"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoTurnoDetalle" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetTurnoDetalle"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoPabellon" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetPabellon"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoMenu" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetMenu"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoConceptoPago" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetConceptoPago"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoAlumno" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetAlumno"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoAlumnoDato" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetAlumnoDato"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoSistemaEvaluacion" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetSistemaEvaluacion"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoPreRequisitos" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetPreRequisitos"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCursoAperturado" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCursoAperturado"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoSeccion" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetSeccion"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoEdicionEstructura" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetEdicionEstructura"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoEstructuraPagos" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetEstructuraPagos"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoUsuario" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetUsuario"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoPago" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetPago"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoSaldo" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetSaldo"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoAlumnoTarifa" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetAlumnoTarifa"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoProrroga" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetProrroga"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoContenidoTematico" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetContenidoTematico"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoCliente" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCliente"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoMatricula" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetMatricula"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoNota" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetNota"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoAsistencia" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetAsistencia"/>
+        </property>
+    </bean>
+    <bean id="springHibernateDaoActa" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetActa"/>
+        </property>
+        <property name="transactionAttributes">
+            <props>
+                <prop key="get*">PROPAGATION_REQUIRED,readOnly</prop>
+                <prop key="find*">PROPAGATION_REQUIRED,readOnly</prop>
+                <prop key="load*">PROPAGATION_REQUIRED,readOnly</prop>
+                <prop key="store*">PROPAGATION_REQUIRED</prop>
+                <prop key="add*">PROPAGATION_REQUIRED</prop>
+                <prop key="*">PROPAGATION_REQUIRED</prop>
+                <!-- None of HSActaDAO's actual method names (seleccionar*/saveOrUpdateActa/
+                     insertarActaDetalles/eliminarActa/reemplazarActaSustitutoria) matched any
+                     rule above, so those calls ran with no Spring-managed transaction at all. -->
+                <prop key="seleccionar*">PROPAGATION_REQUIRED,readOnly</prop>
+                <prop key="saveOrUpdateActa">PROPAGATION_REQUIRED</prop>
+                <prop key="insertarActaDetalles">PROPAGATION_REQUIRED</prop>
+                <prop key="eliminarActa">PROPAGATION_REQUIRED</prop>
+                <prop key="reemplazarActaSustitutoria">PROPAGATION_REQUIRED</prop>
+            </props>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoActividad" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetActividad"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCLArea" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCLArea"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCLAlumno" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCLAlumno"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCLAlumnoTarifa" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCLAlumnoTarifa"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCLMatricula" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCLMatricula"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCLModulo" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCLModulo"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCLCurso" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCLCurso"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCLPlanCurricular" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCLPlanCurricular"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCLTaller" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCLTaller"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCLTallerAperturado" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCLTallerAperturado"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCLHorario" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCLHorario"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCLEstructuraPago" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCLEstructuraPago"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCLNotas" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCLNotas"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCLSeccion" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCLSeccion"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoCLSistemaEvaluacion" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetCLSistemaEvaluacion"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoAsistenciaDocente" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetAsistenciaDocente"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoNotasTemporales" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetNotasTemporales"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoImportacionNotas" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetImportacionNotas"/>
+        </property>
+    </bean>
+
+    <bean id="springHibernateDaoBanco" parent="baseTransactionProxy">
+        <property name="target">
+            <ref bean="hibernateSpringDaoTargetBanco"/>
+        </property>
+    </bean>
+</beans>

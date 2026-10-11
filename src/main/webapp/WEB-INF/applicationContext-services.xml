@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  - Spring config for the new service layer, kept deliberately separate from
+  - applicationContext-hibernate.xml (which still uses the old DTD-based <beans> declaration and
+  - can't host namespaced elements like <tx:annotation-driven/> without converting its root -
+  - a much bigger, riskier change than this warrants). This file uses the modern XSD-namespace
+  - style from the start and is pulled in via a single <import> line from the main file.
+  -
+  - transaction-manager="transactionManager" refers to the HibernateTransactionManager bean
+  - already defined in applicationContext-hibernate.xml; bean references resolve across all
+  - resources merged into the same ApplicationContext regardless of which file declared them.
+  -->
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                            http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx.xsd">
+
+    <!-- Enables @Transactional on the service beans below. This only post-processes already-defined
+         beans (reflection on loaded classes) - it does NOT scan the classpath. Component-scan is
+         deliberately NOT used: the app wires every bean explicitly (the frozen ServiceFinder /
+         hand-declared DAO-proxy pattern), so service beans follow suit - declared here by hand, one
+         per migrated use case, constructor-injecting the existing DAO proxies by id. Stack is
+         Spring 5.3.39 + Java 11 (see uch-env/docs/Backend_Foundation_Charter.md). -->
+    <tx:annotation-driven transaction-manager="transactionManager"/>
+
+    <bean id="gradeRecordService" class="net.uch.academica.service.impl.GradeRecordServiceImpl">
+        <constructor-arg ref="springHibernateDaoActa"/>
+    </bean>
+
+    <bean id="enrollmentService" class="net.uch.academica.service.impl.EnrollmentServiceImpl">
+        <constructor-arg ref="springHibernateDaoMatricula"/>
+    </bean>
+
+    <bean id="paymentSearchService" class="net.uch.administrativa.service.impl.PaymentSearchServiceImpl">
+        <constructor-arg ref="springHibernateDaoAlumnoTarifa"/>
+        <constructor-arg ref="springHibernateDaoPago"/>
+        <constructor-arg ref="springHibernateDaoCLAlumnoTarifa"/>
+        <constructor-arg ref="springHibernateDaoConceptoPago"/>
+    </bean>
+
+    <bean id="prorrogaService" class="net.uch.administrativa.service.impl.ProrrogaServiceImpl">
+        <constructor-arg ref="springHibernateDaoProrroga"/>
+        <constructor-arg ref="springHibernateDaoAlumnoTarifa"/>
+    </bean>
+
+</beans>

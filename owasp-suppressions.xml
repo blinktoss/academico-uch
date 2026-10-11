@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OWASP dependency-check suppression file.
+
+  Record here CVEs that are false positives, or accepted risks with a rationale, so
+  `mvn dependency-check:check` reports stay focused on actionable findings. Keep each entry
+  documented (why it's suppressed, who decided, when) - a suppression is a security decision.
+
+  Scope suppressions as narrowly as possible: prefer a specific <cve> or <vulnerabilityName>
+  tied to a specific <packageUrl> over a broad regex. Example (commented out):
+
+  <suppress>
+     <notes><![CDATA[
+       False positive: CVE matched by name similarity, not applicable to this artifact.
+       Reviewed by: <name>, <YYYY-MM-DD>.
+     ]]></notes>
+     <packageUrl regex="true">^pkg:maven/group/artifact@.*$</packageUrl>
+     <cve>CVE-0000-00000</cve>
+  </suppress>
+
+  Docs: https://jeremylong.github.io/DependencyCheck/general/suppression.html
+-->
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+</suppressions>

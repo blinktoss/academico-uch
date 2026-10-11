@@ -1,0 +1,22 @@
+target/
+.gradle/
+.scannerwork/
+*.stackdump
+*.log
+
+# Eclipse
+.settings/
+.classpath
+.project
+
+# NetBeans
+build/
+nbproject/
+nb-configuration.xml
+nbactions.xml
+
+# IntelliJ IDEA
+.idea/
+*.iml
+.ai/
+.claude/
