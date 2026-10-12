@@ -28,7 +28,7 @@
              to 2.0.x — HikariCP 5.1.0 declares slf4j-api 1.7.36, which would otherwise win Maven
              mediation over log4j-slf4j2-impl's 2.0.x and break the binding (→ NOP logger). -->
         <slf4j.version>2.0.9</slf4j.version>
-        <log4j2.version>2.23.1</log4j2.version>
+        <log4j2.version>2.25.4</log4j2.version>
 
         <tomcat.version>9.0.117</tomcat.version>
 
