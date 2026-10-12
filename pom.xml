@@ -39,11 +39,15 @@
     </properties>
 
     <repositories>
-        <repository>
+        <!--<repository>
             <id>GitHub</id>
             <name>My Own Maven Repository on GitHub</name>
             <url>https://raw.githubusercontent.com/cesardl/repository/master/</url>
-        </repository>
+        </repository>-->
+		<repository>
+			<id>github</id>
+			<url>https://maven.pkg.github.com/blinktoss/maven-libs-workaround</url>
+		</repository>
     </repositories>
 
     <dependencies>
